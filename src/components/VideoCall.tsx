@@ -4,131 +4,141 @@ import { useEffect, useRef, useState } from "react"
 import Peer from "simple-peer"
 import { io } from "socket.io-client"
 
-export default function VideoCall(){
+export default function VideoCall() {
 
-const [stream,setStream] = useState<MediaStream | null>(null)
-const [callReceived,setCallReceived] = useState(false)
-const [callerSignal,setCallerSignal] = useState<any>(null)
+  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [callReceived, setCallReceived] = useState(false)
+  const [callerSignal, setCallerSignal] = useState<any>(null)
 
-const userVideo = useRef<HTMLVideoElement>(null)
-const partnerVideo = useRef<HTMLVideoElement>(null)
-const socketRef = useRef<any>(null)
-const peerRef = useRef<any>(null)
+  const userVideo = useRef<HTMLVideoElement>(null)
+  const partnerVideo = useRef<HTMLVideoElement>(null)
+  const socketRef = useRef<any>(null)
+  const peerRef = useRef<any>(null)
 
-useEffect(()=>{
+  useEffect(() => {
 
-socketRef.current = io("http://localhost:5000")
+    // ✅ BACKEND URL (तुम्हारा)
+    socketRef.current = io("https://mentor-backend-i17a.onrender.com")
 
-navigator.mediaDevices.getUserMedia({
-video:true,
-audio:true
-}).then((currentStream)=>{
+    // ✅ CAMERA ACCESS SAFE
+    if (typeof window !== "undefined" && navigator.mediaDevices) {
+      navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      })
+      .then((currentStream) => {
+        setStream(currentStream)
 
-setStream(currentStream)
+        if (userVideo.current) {
+          userVideo.current.srcObject = currentStream
+        }
+      })
+      .catch((err) => {
+        console.log("Camera error", err)
+      })
+    }
 
-if(userVideo.current){
-userVideo.current.srcObject = currentStream
-}
+    // 📞 CALL RECEIVED
+    socketRef.current.on("call-made", (data: any) => {
+      setCallReceived(true)
+      setCallerSignal(data.signal)
+    })
 
-})
+    // 📞 CALL ANSWERED
+    socketRef.current.on("call-answered", (signal: any) => {
+      if (peerRef.current) {
+        peerRef.current.signal(signal)
+      }
+    })
 
-// receive call
-socketRef.current.on("call-made",(data:any)=>{
-setCallReceived(true)
-setCallerSignal(data.signal)
-})
+    return () => {
+      socketRef.current?.disconnect()
+    }
 
-// answer received
-socketRef.current.on("call-answered",(signal:any)=>{
-if(peerRef.current){
-peerRef.current.signal(signal)
-}
-})
+  }, [])
 
-return ()=>{
-socketRef.current.disconnect()
-}
+  // 🚀 START CALL
+  const startCall = () => {
 
-},[])
+    if (!stream) return
 
+    peerRef.current = new Peer({
+      initiator: true,
+      trickle: false,
+      stream: stream
+    })
 
-// 🚀 CALL START
-const startCall = ()=>{
+    peerRef.current.on("signal", (data: any) => {
+      socketRef.current.emit("call-user", {
+        signal: data
+      })
+    })
 
-peerRef.current = new Peer({
-initiator:true,
-trickle:false,
-stream:stream!
-})
+    peerRef.current.on("stream", (remoteStream: any) => {
+      if (partnerVideo.current) {
+        partnerVideo.current.srcObject = remoteStream
+      }
+    })
+  }
 
-peerRef.current.on("signal",(data:any)=>{
-socketRef.current.emit("call-user",{
-signal:data
+  // ✅ ANSWER CALL
+  const answerCall = () => {
 
-})
-})
+    if (!stream) return
 
-peerRef.current.on("stream",(remoteStream:any)=>{
-if(partnerVideo.current){
-partnerVideo.current.srcObject = remoteStream
-}
-})
+    peerRef.current = new Peer({
+      initiator: false,
+      trickle: false,
+      stream: stream
+    })
 
-}
+    peerRef.current.on("signal", (data: any) => {
+      socketRef.current.emit("answer-call", {
+        signal: data
+      })
+    })
 
+    peerRef.current.on("stream", (remoteStream: any) => {
+      if (partnerVideo.current) {
+        partnerVideo.current.srcObject = remoteStream
+      }
+    })
 
-// ✅ ANSWER CALL
-const answerCall = ()=>{
+    peerRef.current.signal(callerSignal)
+  }
 
-peerRef.current = new Peer({
-initiator:false,
-trickle:false,
-stream:stream!
-})
+  return (
+    <div style={{ display: "flex", gap: "20px", marginTop: "20px" }}>
 
-peerRef.current.on("signal",(data:any)=>{
-socketRef.current.emit("answer-call",{
-signal:data
+      <div>
+        <h3>Your Video</h3>
+        <video
+          ref={userVideo}
+          autoPlay
+          playsInline
+          muted
+          style={{ width: "300px", background: "black" }}
+        />
+      </div>
 
-})
-})
+      <div>
+        <h3>Other User</h3>
+        <video
+          ref={partnerVideo}
+          autoPlay
+          playsInline
+          style={{ width: "300px", background: "black" }}
+        />
+      </div>
 
-peerRef.current.on("stream",(remoteStream:any)=>{
-if(partnerVideo.current){
-partnerVideo.current.srcObject = remoteStream
-}
-})
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <button onClick={startCall}>Start Call</button>
 
-// 🔥 सबसे important
-peerRef.current.signal(callerSignal)
+        {callReceived && (
+          <button onClick={answerCall}>Answer Call</button>
+        )}
+      </div>
 
-}
-
-return(
-
-<div style={{display:"flex",gap:"20px",marginTop:"20px"}}>
-
-<div>
-<h3>Your Video</h3>
-<video ref={userVideo} autoPlay playsInline muted style={{width:"300px"}} />
-</div>
-
-<div>
-<h3>Other User</h3>
-<video ref={partnerVideo} autoPlay playsInline style={{width:"300px"}} />
-</div>
-
-<div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
-
-<button onClick={startCall}>Start Call</button>
-
-{callReceived && (
-<button onClick={answerCall}>Answer Call</button>
-)}
-
-</div>
-
-</div>
-
-)
+    </div>
+  )
 }
