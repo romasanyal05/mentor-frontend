@@ -3,149 +3,146 @@
 import Editor from "@monaco-editor/react"
 import { useState, useEffect } from "react"
 import { io } from "socket.io-client"
-import VideoCall from "@/components/VideoCall"
+import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 
-const socket = io("http://localhost:5000")
+// 🔥 backend URL (LIVE)
+const socket = io("https://mentor-backend-i17a.onrender.com")
+
+// 🔥 VideoCall dynamic (SSR fix)
+const VideoCall = dynamic(() => import("@/components/VideoCall"), {
+  ssr: false
+})
 
 export default function EditorPage(){
 
-const [code,setCode] = useState("// start coding here")
-const [messages,setMessages] = useState<string[]>([])
-const [input,setInput] = useState("")
+  const [code,setCode] = useState("// start coding here")
+  const [messages,setMessages] = useState<string[]>([])
+  const [input,setInput] = useState("")
 
-// ✅ 
-const params = useSearchParams()
-const sessionId = params.get("session")
+  const params = useSearchParams()
+  const sessionId = params.get("session")
 
-useEffect(()=>{
+  useEffect(()=>{
 
-if(sessionId){
-  socket.emit("join-session", sessionId)
-}
+    if(sessionId){
+      socket.emit("join-session", sessionId)
+    }
 
-// code receive
-socket.on("code-update",(newCode:string)=>{
-  setCode(newCode)
-})
+    // code receive
+    socket.on("code-update",(newCode:string)=>{
+      setCode(newCode)
+    })
 
-// chat receive
-socket.on("receive-message", (msg) => {
-  setMessages(prev => [...prev, msg])
-})
+    // chat receive
+    socket.on("receive-message", (msg:string) => {
+      setMessages(prev => [...prev, msg])
+    })
 
-},[sessionId])
+    return ()=>{
+      socket.off("code-update")
+      socket.off("receive-message")
+    }
 
-// code change
-const handleCodeChange = (value:any)=>{
+  },[sessionId])
 
-const newCode = value || ""
+  // code change
+  const handleCodeChange = (value:any)=>{
 
-setCode(newCode)
+    const newCode = value || ""
+    setCode(newCode)
 
-// ✅ emit
-socket.emit("code-change", { code: newCode, sessionId })
+    socket.emit("code-change", { code: newCode, sessionId })
+  }
 
-}
+  // send message
+  const sendMessage = ()=>{
 
-// send message
-const sendMessage = ()=>{
+    if(!input) return
 
-if(!input) return
+    socket.emit("send-message",{ message: input, sessionId })
 
-// ✅ session 
-socket.emit("send-message",{ message: input, sessionId })
+    setMessages(prev=>[...prev,input])
+    setInput("")
+  }
 
-setMessages(prev=>[...prev,input])
-setInput("")
+  // create session
+  const createSession = async () => {
 
-}
+    const res = await fetch("https://mentor-backend-i17a.onrender.com/create-session", {
+      method: "POST"
+    })
 
-// create session
-const createSession = async () => {
-  const res = await fetch("http://localhost:5000/create-session", {
-    method: "POST"
-  })
+    const data = await res.json()
 
-  const data = await res.json()
+    alert("Share this link: " + window.location.origin + "/editor?session=" + data.sessionId)
+  }
 
-  alert("Share this link: http://localhost:3000/editor?session=" + data.sessionId)
-}
+  return(
 
-return(
+    <div style={{ display:"flex", height:"100vh" }}>
 
-<div style={{
-display:"flex",
-height:"100vh"
-}}>
+      <div style={{flex:2}}>
 
-<div style={{flex:2}}>
+        <button onClick={createSession}>Create Session</button>
 
-{/* ✅ button add */}
-<button onClick={createSession}>Create Session</button>
+        <Editor
+          height="100%"
+          defaultLanguage="javascript"
+          value={code}
+          theme="vs-dark"
+          onChange={handleCodeChange}
+          options={{
+            minimap:{enabled:false},
+            automaticLayout:true
+          }}
+        />
 
-<Editor
-height="100%"
-defaultLanguage="javascript"
-value={code}
-theme="vs-dark"
-onChange={handleCodeChange}
-options={{
-minimap:{enabled:false},
-automaticLayout:true}}
-/>
+        <VideoCall />
 
-<VideoCall />
+      </div>
 
-</div>
+      <div style={{
+        flex:1,
+        borderLeft:"1px solid gray",
+        display:"flex",
+        flexDirection:"column",
+        background:"white"
+      }}>
 
-<div style={{
-flex:1,
-borderLeft:"1px solid gray",
-display:"flex",
-flexDirection:"column",
-background:"white",
-zIndex:10
-}}>
+        <div style={{
+          flex:1,
+          overflowY:"auto",
+          padding:"10px"
+        }}>
 
-<div style={{
-flex:1,
-overflowY:"auto",
-padding:"10px"
-}}>
+          {messages.map((msg,i)=>(
+            <div key={i}>{msg}</div>
+          ))}
 
-{messages.map((msg,i)=>(
-<div key={i}>{msg}</div>
-))}
+        </div>
 
-</div>
+        <div style={{
+          display:"flex",
+          padding:"10px"
+        }}>
 
-<div style={{
-display:"flex",
-padding:"10px"
-}}>
+          <input
+            autoFocus
+            style={{flex:1,padding:"8px"}}
+            value={input}
+            onChange={(e)=>setInput(e.target.value)}
+            placeholder="Type message"
+          />
 
-<input
-autoFocus
-style={{
-flex:1,
-padding:"8px"
-}}
-value={input}
-onChange={(e)=>setInput(e.target.value)}
-placeholder="Type message"
-/>
+          <button onClick={sendMessage}>
+            Send
+          </button>
 
-<button onClick={sendMessage}>
-Send
-</button>
+        </div>
 
-</div>
+      </div>
 
-</div>
-
-</div>
-
-)
-
+    </div>
+  )
 }
