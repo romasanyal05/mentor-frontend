@@ -1,14 +1,14 @@
 "use client"
 
 import Editor from "@monaco-editor/react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { io } from "socket.io-client"
 import VideoCall from "@/components/VideoCall"
 import { useSearchParams } from "next/navigation"
 
-const socket = io("https://mentor-backend-i17a.onrender.com")
-
 export default function EditorClient(){
+
+  const socketRef = useRef<any>(null)
 
   const [code,setCode] = useState("// start coding here")
   const [messages,setMessages] = useState<string[]>([])
@@ -19,21 +19,23 @@ export default function EditorClient(){
 
   useEffect(()=>{
 
+    // ✅ socket inside useEffect (IMPORTANT FIX)
+    socketRef.current = io("https://mentor-backend-i17a.onrender.com")
+
     if(sessionId){
-      socket.emit("join-session", sessionId)
+      socketRef.current.emit("join-session", sessionId)
     }
 
-    socket.on("code-update",(newCode:string)=>{
+    socketRef.current.on("code-update",(newCode:string)=>{
       setCode(newCode)
     })
 
-    socket.on("receive-message",(msg:string)=>{
+    socketRef.current.on("receive-message",(msg:string)=>{
       setMessages(prev=>[...prev,msg])
     })
 
     return ()=>{
-      socket.off("code-update")
-      socket.off("receive-message")
+      socketRef.current.disconnect()
     }
 
   },[sessionId])
@@ -41,12 +43,14 @@ export default function EditorClient(){
   const handleCodeChange = (value:any)=>{
     const newCode = value || ""
     setCode(newCode)
-    socket.emit("code-change",{code:newCode,sessionId})
+
+    socketRef.current.emit("code-change",{code:newCode,sessionId})
   }
 
   const sendMessage = ()=>{
     if(!input) return
-    socket.emit("send-message",{message:input,sessionId})
+
+    socketRef.current.emit("send-message",{message:input,sessionId})
     setMessages(prev=>[...prev,input])
     setInput("")
   }
