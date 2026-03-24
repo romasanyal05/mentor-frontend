@@ -19,7 +19,7 @@ export default function EditorClient(){
   const params = useSearchParams()
   const sessionId = params.get("session")
 
-  // ---------------- USERNAME ----------------
+  // USERNAME
   useEffect(()=>{
     const name = prompt("Enter your name")
     if(name){
@@ -27,7 +27,7 @@ export default function EditorClient(){
     }
   },[])
 
-  // ---------------- LOAD DB ----------------
+  // LOAD OLD MESSAGES
   useEffect(()=>{
     const loadMessages = async ()=>{
       if(!sessionId) return
@@ -46,22 +46,13 @@ export default function EditorClient(){
     loadMessages()
   },[sessionId])
 
-  // ---------------- SOCKET ----------------
+  // SOCKET
   useEffect(()=>{
 
     socketRef.current = io("https://mentor-backend-i17a.onrender.com")
 
     if(sessionId){
       socketRef.current.emit("join-session", sessionId)
-
-      // 🔥 SYSTEM MESSAGE
-      if(username){
-        socketRef.current.emit("send-message",{
-          message: `${username} joined the session`,
-          sessionId,
-          system:true
-        })
-      }
     }
 
     socketRef.current.on("code-update",(newCode:string)=>{
@@ -73,8 +64,7 @@ export default function EditorClient(){
         ...prev,
         {
           message: msg.message || msg,
-          created_at: new Date().toISOString(),
-          system: msg.system || false
+          created_at: new Date().toISOString()
         }
       ])
     })
@@ -83,17 +73,16 @@ export default function EditorClient(){
       socketRef.current.disconnect()
     }
 
-  },[sessionId,username])
+  },[sessionId])
 
-  // ---------------- CODE ----------------
+  // CODE CHANGE
   const handleCodeChange = (value:any)=>{
     const newCode = value || ""
     setCode(newCode)
-
     socketRef.current.emit("code-change",{code:newCode,sessionId})
   }
 
-  // ---------------- SEND MESSAGE ----------------
+  // SEND MESSAGE
   const sendMessage = async ()=>{
     if(!input) return
 
@@ -122,7 +111,7 @@ export default function EditorClient(){
     setInput("")
   }
 
-  // ---------------- CREATE SESSION ----------------
+  // CREATE SESSION
   const createSession = async ()=>{
     const res = await fetch("https://mentor-backend-i17a.onrender.com/create-session",{
       method:"POST"
@@ -132,64 +121,143 @@ export default function EditorClient(){
   }
 
   return(
-    <div style={{display:"flex",height:"100vh"}}>
+    <div style={{
+      display:"flex",
+      height:"100vh",
+      fontFamily:"Arial, sans-serif",
+      background:"#f5f7fb"
+    }}>
 
-      <div style={{flex:2}}>
+      {/* LEFT */}
+      <div style={{
+        flex:2,
+        display:"flex",
+        flexDirection:"column",
+        padding:"10px"
+      }}>
 
-        <button onClick={createSession}>Create Session</button>
+        <div style={{
+          display:"flex",
+          justifyContent:"space-between",
+          marginBottom:"10px"
+        }}>
+          <h3 style={{margin:0}}>💻 Mentor Collaboration Platform</h3>
 
-        <Editor
-          height="100%"
-          defaultLanguage="javascript"
-          value={code}
-          theme="vs-dark"
-          onChange={handleCodeChange}
-          options={{
-            minimap:{enabled:false},
-            automaticLayout:true
-          }}
-        />
+          <button 
+            onClick={createSession}
+            style={{
+              padding:"8px 12px",
+              background:"#4f46e5",
+              color:"white",
+              border:"none",
+              borderRadius:"6px",
+              cursor:"pointer"
+            }}
+          >
+            + Create Session
+          </button>
+        </div>
 
-        <VideoCall />
+        <div style={{
+          flex:1,
+          borderRadius:"10px",
+          overflow:"hidden",
+          boxShadow:"0 2px 10px rgba(0,0,0,0.1)"
+        }}>
+          <Editor
+            height="100%"
+            defaultLanguage="javascript"
+            value={code}
+            theme="vs-dark"
+            onChange={handleCodeChange}
+            options={{
+              minimap:{enabled:false},
+              automaticLayout:true
+            }}
+          />
+        </div>
+
+        <div style={{marginTop:"10px"}}>
+          <VideoCall />
+        </div>
 
       </div>
 
+      {/* RIGHT CHAT */}
       <div style={{
         flex:1,
-        borderLeft:"1px solid gray",
         display:"flex",
         flexDirection:"column",
-        background:"white"
+        margin:"10px",
+        background:"white",
+        borderRadius:"10px",
+        boxShadow:"0 2px 10px rgba(0,0,0,0.1)",
+        overflow:"hidden"
       }}>
 
-        <div style={{flex:1,overflowY:"auto",padding:"10px"}}>
-          {messages.map((msg,i)=>(
-            <div key={i} style={{marginBottom:"10px"}}>
+        <div style={{
+          padding:"10px",
+          borderBottom:"1px solid #eee",
+          fontWeight:"bold"
+        }}>
+          💬 Chat
+        </div>
 
-              {msg.system ? (
-                <div style={{color:"gray",fontStyle:"italic"}}>
-                  {msg.message}
-                </div>
-              ) : (
-                <div>{msg.message}</div>
-              )}
+        <div style={{
+          flex:1,
+          overflowY:"auto",
+          padding:"10px"
+        }}>
+
+          {messages.map((msg,i)=>(
+            <div key={i} style={{
+              marginBottom:"10px",
+              background:"#f1f5f9",
+              padding:"8px",
+              borderRadius:"6px"
+            }}>
+              <div style={{fontWeight:"500"}}>
+                {msg.message}
+              </div>
 
               <small style={{color:"gray"}}>
                 {new Date(msg.created_at).toLocaleTimeString()}
               </small>
-
             </div>
           ))}
+
         </div>
 
-        <div style={{display:"flex",padding:"10px"}}>
+        <div style={{
+          display:"flex",
+          borderTop:"1px solid #eee"
+        }}>
+
           <input
-            style={{flex:1,padding:"8px"}}
+            style={{
+              flex:1,
+              padding:"10px",
+              border:"none",
+              outline:"none"
+            }}
             value={input}
             onChange={(e)=>setInput(e.target.value)}
-            placeholder="Type message"
+            placeholder="Type message..."
           />
-          <button onClick={sendMessage}>Send</button>
+
+          <button 
+            onClick={sendMessage}
+            style={{
+              padding:"10px 15px",
+              background:"#4f46e5",
+              color:"white",
+              border:"none",
+              cursor:"pointer"
+            }}
+          >
+            Send
+          </button>
+
         </div>
 
       </div>
