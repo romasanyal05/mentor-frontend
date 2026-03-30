@@ -26,7 +26,7 @@ export default function EditorClient(){
   const params = useSearchParams()
   const sessionId = params.get("session") || "default123"
 
-  // LOGIN CHECK
+  // 🔐 LOGIN CHECK
   useEffect(()=>{
     const check = async ()=>{
       const { data } = await supabase.auth.getSession()
@@ -61,6 +61,21 @@ export default function EditorClient(){
     setJoined(true)
   }
 
+  // 🆕 CREATE SESSION
+  const createSession = async ()=>{
+    const res = await fetch("https://mentor-backend-i17a.onrender.com/create-session",{
+      method:"POST"
+    })
+
+    const data = await res.json()
+
+    const newUrl = window.location.origin + "/editor?session=" + data.sessionId
+
+    alert("Share this link: " + newUrl)
+
+    window.location.href = "/editor?session=" + data.sessionId
+  }
+
   // CRDT
   useEffect(()=>{
     if(!joined) return
@@ -91,7 +106,6 @@ export default function EditorClient(){
 
     socketRef.current.on("receive-message",(msg:any)=>{
 
-      // 🔥 CLEAR CHAT SIGNAL
       if(msg.type === "clear"){
         setMessages([])
       }else{
@@ -135,7 +149,7 @@ export default function EditorClient(){
     setInput("")
   }
 
-  // ✅ CLEAR CHAT (NO BACKEND NEEDED)
+  // CLEAR CHAT
   const clearChat = ()=>{
     socketRef.current.emit("send-message",{
       type:"clear",
@@ -193,9 +207,24 @@ export default function EditorClient(){
     <div style={{display:"flex",height:"100vh"}}>
 
       <div style={{flex:2,padding:"10px"}}>
+
+        {/* HEADER */}
         <div style={{display:"flex",justifyContent:"space-between"}}>
           <h3>Live Classroom</h3>
-          <button onClick={logout}>Logout</button>
+
+          <div>
+            <button onClick={createSession} style={{
+              marginRight:"10px",
+              background:"green",
+              color:"white"
+            }}>
+              Create Session
+            </button>
+
+            <button onClick={logout}>
+              Logout
+            </button>
+          </div>
         </div>
 
         <Editor
@@ -206,8 +235,10 @@ export default function EditorClient(){
         />
 
         <VideoCall />
+
       </div>
 
+      {/* CHAT */}
       <div style={{flex:1,background:"white",display:"flex",flexDirection:"column"}}>
 
         <div style={{display:"flex",justifyContent:"space-between",padding:"10px"}}>
