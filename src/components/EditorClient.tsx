@@ -2,6 +2,8 @@
 
 import Editor from "@monaco-editor/react"
 import { useState, useEffect, useRef } from "react"
+import { WebsocketProvider } from "y-websocket"
+import * as Y from "yjs"
 import { io } from "socket.io-client"
 import VideoCall from "@/components/VideoCall"
 import { useSearchParams } from "next/navigation"
@@ -10,54 +12,87 @@ import { supabase } from "@/lib/supabase"
 export default function EditorClient(){
 
   const socketRef = useRef<any>(null)
+  const yTextRef = useRef<any>(null)
+  const editorRef = useRef<any>(null)
 
-  const [code,setCode] = useState("// start coding here")
+  const [code,setCode] = useState("")
   const [messages,setMessages] = useState<any[]>([])
   const [input,setInput] = useState("")
-  const [username,setUsername] = useState("")
+
+  const [user,setUser] = useState("")
+  const [role,setRole] = useState("student")
+  const [loggedIn,setLoggedIn] = useState(false)
 
   const params = useSearchParams()
   const sessionId = params.get("session")
 
-  // USERNAME
+  // ---------------- LOGIN ----------------
+  if(!loggedIn){
+    return(
+      <div style={{padding:"50px",textAlign:"center"}}>
+        <h2>Join Classroom</h2>
+        <input
+          placeholder="Enter your name"
+          value={user}
+          onChange={(e)=>setUser(e.target.value)}
+          style={{padding:"10px"}}
+        />
+        <br/><br/>
+
+        <select onChange={(e)=>setRole(e.target.value)}>
+          <option value="mentor">Mentor</option>
+          <option value="student">Student</option>
+        </select>
+
+        <br/><br/>
+
+        <button onClick={()=>setLoggedIn(true)}>
+          Enter
+        </button>
+      </div>
+    )
+  }
+
+  // ---------------- CRDT ----------------
   useEffect(()=>{
-    const name = prompt("Enter your name")
-    if(name){
-      setUsername(name)
+
+    if(!sessionId) return
+
+    const ydoc = new Y.Doc()
+
+    const provider = new WebsocketProvider(
+      "wss://demos.yjs.dev",
+      sessionId,
+      ydoc
+    )
+
+    const yText = ydoc.getText("monaco")
+    yTextRef.current = yText
+
+    yText.observe(()=>{
+      setCode(yText.toString())
+    })
+
+    return ()=>{
+      provider.disconnect()
+      ydoc.destroy()
     }
-  },[])
 
-  // LOAD OLD MESSAGES
-  useEffect(()=>{
-    const loadMessages = async ()=>{
-      if(!sessionId) return
-
-      const { data } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("session_id", sessionId)
-        .order("created_at",{ascending:true})
-
-      if(data){
-        setMessages(data)
-      }
-    }
-
-    loadMessages()
   },[sessionId])
 
-  // SOCKET
+  // ---------------- SOCKET ----------------
   useEffect(()=>{
 
     socketRef.current = io("https://mentor-backend-i17a.onrender.com")
 
     if(sessionId){
       socketRef.current.emit("join-session", sessionId)
-    }
 
-    socketRef.current.on("code-update",(newCode:string)=>{
-      setCode(newCode)
-    })
+      socketRef.current.emit("send-message",{
+        message: `${user} joined`,
+        sessionId
+      })
+    }
 
     socketRef.current.on("receive-message",(msg:any)=>{
       setMessages(prev=>[
@@ -69,24 +104,48 @@ export default function EditorClient(){
       ])
     })
 
+    socketRef.current.on("session-cleared",()=>{
+      setMessages([])
+      setCode("")
+    })
+
     return ()=>{
       socketRef.current.disconnect()
     }
 
+  },[sessionId,user])
+
+  // ---------------- LOAD CHAT ----------------
+  useEffect(()=>{
+    const load = async ()=>{
+      if(!sessionId) return
+
+      const { data } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("session_id", sessionId)
+
+      if(data) setMessages(data)
+    }
+    load()
   },[sessionId])
 
-  // CODE CHANGE
+  // ---------------- CODE CHANGE ----------------
   const handleCodeChange = (value:any)=>{
-    const newCode = value || ""
-    setCode(newCode)
-    socketRef.current.emit("code-change",{code:newCode,sessionId})
+    if(!yTextRef.current) return
+
+    const yText = yTextRef.current
+
+    yText.delete(0, yText.length)
+    yText.insert(0, value || "")
   }
 
-  // SEND MESSAGE
+  // ---------------- SEND MESSAGE ----------------
   const sendMessage = async ()=>{
+
     if(!input) return
 
-    const fullMsg = `${username}: ${input}`
+    const fullMsg = `${user}: ${input}`
 
     socketRef.current.emit("send-message",{
       message: fullMsg,
@@ -111,154 +170,84 @@ export default function EditorClient(){
     setInput("")
   }
 
-  // CREATE SESSION
+  // ---------------- CREATE SESSION ----------------
   const createSession = async ()=>{
     const res = await fetch("https://mentor-backend-i17a.onrender.com/create-session",{
       method:"POST"
     })
     const data = await res.json()
-    alert(window.location.origin + "/editor?session=" + data.sessionId)
+
+    alert("Share this link: " + window.location.origin + "/editor?session=" + data.sessionId)
   }
 
+  // ---------------- CLEAR SESSION ----------------
+  const clearSession = async ()=>{
+
+    if(!sessionId) return
+
+    setMessages([])
+    setCode("")
+
+    await supabase
+      .from("messages")
+      .delete()
+      .eq("session_id", sessionId)
+
+    if(yTextRef.current){
+      yTextRef.current.delete(0, yTextRef.current.length)
+    }
+
+    socketRef.current.emit("session-cleared",sessionId)
+  }
+
+  // ---------------- UI ----------------
   return(
-    <div style={{
-      display:"flex",
-      height:"100vh",
-      fontFamily:"Arial, sans-serif",
-      background:"#f5f7fb"
-    }}>
+    <div style={{display:"flex",height:"100vh"}}>
 
-      {/* LEFT */}
-      <div style={{
-        flex:2,
-        display:"flex",
-        flexDirection:"column",
-        padding:"10px"
-      }}>
+      <div style={{flex:2,padding:"10px"}}>
 
-        <div style={{
-          display:"flex",
-          justifyContent:"space-between",
-          marginBottom:"10px"
-        }}>
-          <h3 style={{margin:0}}>💻 Mentor Collaboration Platform</h3>
+        <div style={{display:"flex",justifyContent:"space-between"}}>
+          <h3>💻 Classroom Editor</h3>
 
-          <button 
-            onClick={createSession}
-            style={{
-              padding:"8px 12px",
-              background:"#4f46e5",
-              color:"white",
-              border:"none",
-              borderRadius:"6px",
-              cursor:"pointer"
-            }}
-          >
-            + Create Session
-          </button>
+          <div>
+            <button onClick={createSession}>Create</button>
+            <button onClick={clearSession} style={{background:"red",color:"white"}}>
+              Clear
+            </button>
+          </div>
         </div>
 
-        <div style={{
-          flex:1,
-          borderRadius:"10px",
-          overflow:"hidden",
-          boxShadow:"0 2px 10px rgba(0,0,0,0.1)"
-        }}>
-          <Editor
-            height="100%"
-            defaultLanguage="javascript"
-            value={code}
-            theme="vs-dark"
-            onChange={handleCodeChange}
-            options={{
-              minimap:{enabled:false},
-              automaticLayout:true
-            }}
-          />
-        </div>
+        <Editor
+          height="80%"
+          value={code}
+          theme="vs-dark"
+          onChange={handleCodeChange}
+          onMount={(editor)=>{editorRef.current = editor}}
+        />
 
-        <div style={{marginTop:"10px"}}>
-          <VideoCall />
-        </div>
+        <VideoCall />
 
       </div>
 
-      {/* RIGHT CHAT */}
-      <div style={{
-        flex:1,
-        display:"flex",
-        flexDirection:"column",
-        margin:"10px",
-        background:"white",
-        borderRadius:"10px",
-        boxShadow:"0 2px 10px rgba(0,0,0,0.1)",
-        overflow:"hidden"
-      }}>
+      {/* CHAT */}
+      <div style={{flex:1,background:"white",padding:"10px"}}>
 
-        <div style={{
-          padding:"10px",
-          borderBottom:"1px solid #eee",
-          fontWeight:"bold"
-        }}>
-          💬 Chat
-        </div>
+        <h3>💬 Chat</h3>
 
-        <div style={{
-          flex:1,
-          overflowY:"auto",
-          padding:"10px"
-        }}>
-
+        <div style={{height:"70%",overflow:"auto"}}>
           {messages.map((msg,i)=>(
-            <div key={i} style={{
-              marginBottom:"10px",
-              background:"#f1f5f9",
-              padding:"8px",
-              borderRadius:"6px"
-            }}>
-              <div style={{fontWeight:"500"}}>
-                {msg.message}
-              </div>
-
-              <small style={{color:"gray"}}>
-                {new Date(msg.created_at).toLocaleTimeString()}
-              </small>
+            <div key={i}>
+              {msg.message}
             </div>
           ))}
-
         </div>
 
-        <div style={{
-          display:"flex",
-          borderTop:"1px solid #eee"
-        }}>
+        <input
+          value={input}
+          onChange={(e)=>setInput(e.target.value)}
+        />
 
-          <input
-            style={{
-              flex:1,
-              padding:"10px",
-              border:"none",
-              outline:"none"
-            }}
-            value={input}
-            onChange={(e)=>setInput(e.target.value)}
-            placeholder="Type message..."
-          />
-
-          <button 
-            onClick={sendMessage}
-            style={{
-              padding:"10px 15px",
-              background:"#4f46e5",
-              color:"white",
-              border:"none",
-              cursor:"pointer"
-            }}
-          >
-            Send
-          </button>
-
-        </div>
+        <button onClick={sendMessage}>Send</button>
 
       </div>
 
