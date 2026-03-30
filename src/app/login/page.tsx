@@ -1,47 +1,89 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase"
 
-export default function Login(){
+export default function LoginPage(){
 
-const [email,setEmail] = useState("")
-const [password,setPassword] = useState("")
+  const router = useRouter()
 
-const handleLogin = async () => {
+  const [email,setEmail] = useState("")
+  const [password,setPassword] = useState("")
+  const [isSignup,setIsSignup] = useState(false)
 
- await fetch("http://localhost:5000/login",{
-  method:"POST",
-  headers:{
-   "Content-Type":"application/json"
-  },
-  body: JSON.stringify({email,password})
- })
+  const handleAuth = async ()=>{
 
-}
+    if(isSignup){
+      const { error } = await supabase.auth.signUp({
+        email,
+        password
+      })
 
-return(
+      if(error) alert(error.message)
+      else alert("Signup success")
+    }
+    else{
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
 
-<div>
+      if(error){
+        alert(error.message)
+      } else {
+        // 🔥 FINAL FIX
+        router.push("/editor?session=test123")
+      }
+    }
 
-<h1>Login</h1>
+  }
 
-<input
-placeholder="Email"
-onChange={(e)=>setEmail(e.target.value)}
-/>
+  return(
+    <div style={{
+      height:"100vh",
+      display:"flex",
+      justifyContent:"center",
+      alignItems:"center"
+    }}>
 
-<input
-type="password"
-placeholder="Password"
-onChange={(e)=>setPassword(e.target.value)}
-/>
+      <div style={{
+        padding:"20px",
+        border:"1px solid gray",
+        borderRadius:"10px"
+      }}>
 
-<button onClick={handleLogin}>
-Login
-</button>
+        <h2>{isSignup ? "Signup" : "Login"}</h2>
 
-</div>
+        <input
+          placeholder="Email"
+          value={email}
+          onChange={(e)=>setEmail(e.target.value)}
+        />
 
-)
+        <br/><br/>
 
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e)=>setPassword(e.target.value)}
+        />
+
+        <br/><br/>
+
+        <button onClick={handleAuth}>
+          {isSignup ? "Signup" : "Login"}
+        </button>
+
+        <br/><br/>
+
+        <button onClick={()=>setIsSignup(!isSignup)}>
+          {isSignup ? "Go to Login" : "Go to Signup"}
+        </button>
+
+      </div>
+
+    </div>
+  )
 }
