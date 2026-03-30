@@ -13,30 +13,33 @@ export default function EditorClient(){
 
   const socketRef = useRef<any>(null)
   const yTextRef = useRef<any>(null)
-  const editorRef = useRef<any>(null)
 
   const [code,setCode] = useState("")
   const [messages,setMessages] = useState<any[]>([])
   const [input,setInput] = useState("")
 
+  // 🔐 AUTH
   const [user,setUser] = useState("")
   const [role,setRole] = useState("student")
+  const [mode,setMode] = useState<"login"|"signup">("login")
   const [loggedIn,setLoggedIn] = useState(false)
 
   const params = useSearchParams()
   const sessionId = params.get("session")
 
-  // ---------------- LOGIN ----------------
+  // ---------------- LOGIN / SIGNUP ----------------
   if(!loggedIn){
     return(
       <div style={{padding:"50px",textAlign:"center"}}>
-        <h2>Join Classroom</h2>
+        <h2>{mode === "login" ? "Login" : "Signup"}</h2>
+
         <input
-          placeholder="Enter your name"
+          placeholder="Enter name"
           value={user}
           onChange={(e)=>setUser(e.target.value)}
           style={{padding:"10px"}}
         />
+
         <br/><br/>
 
         <select onChange={(e)=>setRole(e.target.value)}>
@@ -47,7 +50,13 @@ export default function EditorClient(){
         <br/><br/>
 
         <button onClick={()=>setLoggedIn(true)}>
-          Enter
+          {mode === "login" ? "Login" : "Signup"}
+        </button>
+
+        <br/><br/>
+
+        <button onClick={()=>setMode(mode==="login"?"signup":"login")}>
+          Switch to {mode==="login"?"Signup":"Login"}
         </button>
       </div>
     )
@@ -89,7 +98,7 @@ export default function EditorClient(){
       socketRef.current.emit("join-session", sessionId)
 
       socketRef.current.emit("send-message",{
-        message: `${user} joined`,
+        message: `${role}:${user} joined`,
         sessionId
       })
     }
@@ -113,7 +122,7 @@ export default function EditorClient(){
       socketRef.current.disconnect()
     }
 
-  },[sessionId,user])
+  },[sessionId,user,role])
 
   // ---------------- LOAD CHAT ----------------
   useEffect(()=>{
@@ -130,22 +139,20 @@ export default function EditorClient(){
     load()
   },[sessionId])
 
-  // ---------------- CODE CHANGE ----------------
+  // ---------------- CODE ----------------
   const handleCodeChange = (value:any)=>{
     if(!yTextRef.current) return
 
     const yText = yTextRef.current
-
     yText.delete(0, yText.length)
     yText.insert(0, value || "")
   }
 
   // ---------------- SEND MESSAGE ----------------
   const sendMessage = async ()=>{
-
     if(!input) return
 
-    const fullMsg = `${user}: ${input}`
+    const fullMsg = `${role}:${user}: ${input}`
 
     socketRef.current.emit("send-message",{
       message: fullMsg,
@@ -153,18 +160,12 @@ export default function EditorClient(){
     })
 
     await supabase.from("messages").insert([
-      {
-        session_id: sessionId,
-        message: fullMsg
-      }
+      { session_id: sessionId, message: fullMsg }
     ])
 
     setMessages(prev=>[
       ...prev,
-      {
-        message: fullMsg,
-        created_at: new Date().toISOString()
-      }
+      { message: fullMsg }
     ])
 
     setInput("")
@@ -177,27 +178,17 @@ export default function EditorClient(){
     })
     const data = await res.json()
 
-    alert("Share this link: " + window.location.origin + "/editor?session=" + data.sessionId)
+    alert(window.location.origin + "/editor?session=" + data.sessionId)
   }
 
-  // ---------------- CLEAR SESSION ----------------
-  const clearSession = async ()=>{
-
-    if(!sessionId) return
-
+  // ---------------- CLEAR CHAT ----------------
+  const clearChat = async ()=>{
     setMessages([])
-    setCode("")
 
     await supabase
       .from("messages")
       .delete()
       .eq("session_id", sessionId)
-
-    if(yTextRef.current){
-      yTextRef.current.delete(0, yTextRef.current.length)
-    }
-
-    socketRef.current.emit("session-cleared",sessionId)
   }
 
   // ---------------- UI ----------------
@@ -207,12 +198,12 @@ export default function EditorClient(){
       <div style={{flex:2,padding:"10px"}}>
 
         <div style={{display:"flex",justifyContent:"space-between"}}>
-          <h3>💻 Classroom Editor</h3>
+          <h3>💻 Classroom</h3>
 
           <div>
             <button onClick={createSession}>Create</button>
-            <button onClick={clearSession} style={{background:"red",color:"white"}}>
-              Clear
+            <button onClick={clearChat} style={{background:"red",color:"white"}}>
+              Clear Chat
             </button>
           </div>
         </div>
@@ -222,7 +213,6 @@ export default function EditorClient(){
           value={code}
           theme="vs-dark"
           onChange={handleCodeChange}
-          onMount={(editor)=>{editorRef.current = editor}}
         />
 
         <VideoCall />
@@ -235,11 +225,23 @@ export default function EditorClient(){
         <h3>💬 Chat</h3>
 
         <div style={{height:"70%",overflow:"auto"}}>
-          {messages.map((msg,i)=>(
-            <div key={i}>
-              {msg.message}
-            </div>
-          ))}
+
+          {messages.map((msg,i)=>{
+            const isMentor = msg.message?.includes("mentor")
+
+            return (
+              <div
+                key={i}
+                style={{
+                  color: isMentor ? "blue" : "red",
+                  fontWeight:"bold"
+                }}
+              >
+                {msg.message}
+              </div>
+            )
+          })}
+
         </div>
 
         <input
