@@ -3,8 +3,6 @@
 import Editor from "@monaco-editor/react"
 import { useState, useEffect, useRef } from "react"
 import { io } from "socket.io-client"
-import { WebsocketProvider } from "y-websocket"
-import * as Y from "yjs"
 import VideoCall from "@/components/VideoCall"
 import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
@@ -12,9 +10,8 @@ import { supabase } from "@/lib/supabase"
 export default function EditorClient(){
 
   const socketRef = useRef<any>(null)
-  const yTextRef = useRef<any>(null)
 
-  const [code,setCode] = useState("// start coding")
+  const [code,setCode] = useState("// start coding here")
   const [messages,setMessages] = useState<any[]>([])
   const [input,setInput] = useState("")
 
@@ -26,7 +23,7 @@ export default function EditorClient(){
   const params = useSearchParams()
   const sessionId = params.get("session") || "default123"
 
-  // 🔐 LOGIN CHECK
+  // 🔐 AUTH CHECK
   useEffect(()=>{
     const check = async ()=>{
       const { data } = await supabase.auth.getSession()
@@ -61,7 +58,7 @@ export default function EditorClient(){
     setJoined(true)
   }
 
-  // 🆕 CREATE SESSION
+  // CREATE SESSION
   const createSession = async ()=>{
     const res = await fetch("https://mentor-backend-i17a.onrender.com/create-session",{
       method:"POST"
@@ -73,28 +70,10 @@ export default function EditorClient(){
 
     alert("Share this link: " + newUrl)
 
+    navigator.clipboard.writeText(newUrl)
+
     window.location.href = "/editor?session=" + data.sessionId
   }
-
-  // CRDT
-  useEffect(()=>{
-    if(!joined) return
-
-    const ydoc = new Y.Doc()
-    const provider = new WebsocketProvider("wss://mentor-backend-i17a.onrender.com/yjs", sessionId, ydoc)
-
-    const yText = ydoc.getText("monaco")
-    yTextRef.current = yText
-
-    yText.observe(()=>{
-      setCode(yText.toString())
-    })
-
-    return ()=>{
-      provider.disconnect()
-      ydoc.destroy()
-    }
-  },[joined,sessionId])
 
   // SOCKET
   useEffect(()=>{
@@ -103,6 +82,10 @@ export default function EditorClient(){
     socketRef.current = io("https://mentor-backend-i17a.onrender.com")
 
     socketRef.current.emit("join-session", sessionId)
+
+    socketRef.current.on("code-update",(newCode:string)=>{
+      setCode(newCode)
+    })
 
     socketRef.current.on("receive-message",(msg:any)=>{
 
@@ -117,23 +100,18 @@ export default function EditorClient(){
     return ()=>{
       socketRef.current.disconnect()
     }
+
   },[joined,sessionId])
 
-  // CODE
+  // CODE CHANGE
   const handleCodeChange = (value:any)=>{
     const newCode = value || ""
     setCode(newCode)
 
-    if(yTextRef.current){
-      const yText = yTextRef.current
-      yText.delete(0, yText.length)
-      yText.insert(0, newCode)
-    }
-
-    socketRef.current?.emit("code-change",{code:newCode,sessionId})
+    socketRef.current.emit("code-change",{code:newCode,sessionId})
   }
 
-  // CHAT
+  // SEND MESSAGE
   const sendMessage = ()=>{
     if(!input) return
 
@@ -145,6 +123,7 @@ export default function EditorClient(){
     }
 
     socketRef.current.emit("send-message",{...msgData,sessionId})
+
     setMessages(prev=>[...prev,msgData])
     setInput("")
   }
@@ -167,6 +146,7 @@ export default function EditorClient(){
     return <div style={{padding:"50px"}}>Loading...</div>
   }
 
+  // JOIN SCREEN
   if(!joined){
     return(
       <div style={{
@@ -179,7 +159,8 @@ export default function EditorClient(){
         <div style={{
           background:"white",
           padding:"30px",
-          borderRadius:"15px",
+          borderRadius:"20px",
+          boxShadow:"0 10px 25px rgba(0,0,0,0.2)",
           display:"flex",
           flexDirection:"column",
           gap:"10px"
@@ -208,15 +189,18 @@ export default function EditorClient(){
 
       <div style={{flex:2,padding:"10px"}}>
 
-        {/* HEADER */}
         <div style={{display:"flex",justifyContent:"space-between"}}>
           <h3>Live Classroom</h3>
 
           <div>
             <button onClick={createSession} style={{
               marginRight:"10px",
-              background:"green",
-              color:"white"
+              background:"#22c55e",
+              color:"white",
+              padding:"8px 15px",
+              borderRadius:"8px",
+              border:"none",
+              fontWeight:"bold"
             }}>
               Create Session
             </button>
@@ -243,7 +227,15 @@ export default function EditorClient(){
 
         <div style={{display:"flex",justifyContent:"space-between",padding:"10px"}}>
           <h4>Chat</h4>
-          <button onClick={clearChat}>Clear Chat</button>
+          <button onClick={clearChat} style={{
+            background:"#ef4444",
+            color:"white",
+            padding:"5px 10px",
+            borderRadius:"6px",
+            border:"none"
+          }}>
+            Clear Chat
+          </button>
         </div>
 
         <div style={{flex:1,overflow:"auto",padding:"10px"}}>
@@ -252,9 +244,12 @@ export default function EditorClient(){
               marginBottom:"10px",
               padding:"10px",
               borderRadius:"10px",
-              background: msg.role === "mentor" ? "#e6f4ff" : "#ffe6e6"
+              background: msg.role === "mentor" ? "#dbeafe" : "#fee2e2",
+              border: msg.role === "mentor" ? "1px solid #3b82f6" : "1px solid #ef4444"
             }}>
-              <b style={{color: msg.role === "mentor" ? "blue" : "red"}}>
+              <b style={{
+                color: msg.role === "mentor" ? "#1d4ed8" : "#b91c1c"
+              }}>
                 {msg.user}
               </b>
               <div>{msg.text}</div>
@@ -265,11 +260,25 @@ export default function EditorClient(){
 
         <div style={{display:"flex",padding:"10px"}}>
           <input
-            style={{flex:1}}
+            style={{
+              flex:1,
+              padding:"10px",
+              borderRadius:"8px",
+              border:"1px solid #ccc"
+            }}
             value={input}
             onChange={(e)=>setInput(e.target.value)}
           />
-          <button onClick={sendMessage}>Send</button>
+          <button onClick={sendMessage} style={{
+            marginLeft:"8px",
+            padding:"10px 15px",
+            background:"#6366f1",
+            color:"white",
+            borderRadius:"8px",
+            border:"none"
+          }}>
+            Send
+          </button>
         </div>
 
       </div>
