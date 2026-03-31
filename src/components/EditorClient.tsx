@@ -81,7 +81,7 @@ export default function EditorClient(){
     if(!joined) return
 
     const ydoc = new Y.Doc()
-    const provider = new WebsocketProvider("wss://demos.yjs.dev", sessionId, ydoc)
+    const provider = new WebsocketProvider("wss://mentor-backend-i17a.onrender.com/yjs", sessionId, ydoc)
 
     const yText = ydoc.getText("monaco")
     yTextRef.current = yText
