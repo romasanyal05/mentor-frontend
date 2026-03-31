@@ -53,7 +53,7 @@ export default function VideoCall() {
     socketRef.current.on("call-made", (data: any) => {
 
       // 🔥 FIX: ignore self call
-      if(data.from !== myId){
+      if(data.from !== socketRef.current.id){
         setCallReceived(true)
         setCallerSignal(data.signal)
       }
@@ -71,7 +71,7 @@ export default function VideoCall() {
       socketRef.current.disconnect()
     }
 
-  }, [sessionId, myId])
+  }, [sessionId])
 
   // 🚀 START CALL
   const startCall = () => {
