@@ -14,6 +14,9 @@ export default function VideoCall() {
   const [callReceived, setCallReceived] = useState(false)
   const [callerSignal, setCallerSignal] = useState<any>(null)
 
+  // 🔥 ADD: self socket id
+  const [myId, setMyId] = useState("")
+
   const userVideo = useRef<HTMLVideoElement>(null)
   const partnerVideo = useRef<HTMLVideoElement>(null)
   const socketRef = useRef<any>(null)
@@ -22,6 +25,11 @@ export default function VideoCall() {
   useEffect(() => {
 
     socketRef.current = io("https://mentor-backend-i17a.onrender.com")
+
+    // 🔥 ADD: get own socket id
+    socketRef.current.on("connect", () => {
+      setMyId(socketRef.current.id)
+    })
 
     // ✅ JOIN SAME SESSION
     socketRef.current.emit("join-session", sessionId)
@@ -43,8 +51,13 @@ export default function VideoCall() {
 
     // 📞 RECEIVE CALL
     socketRef.current.on("call-made", (data: any) => {
-      setCallReceived(true)
-      setCallerSignal(data.signal)
+
+      // 🔥 FIX: ignore self call
+      if(data.from !== myId){
+        setCallReceived(true)
+        setCallerSignal(data.signal)
+      }
+
     })
 
     // 📞 CALL ACCEPTED
@@ -58,7 +71,7 @@ export default function VideoCall() {
       socketRef.current.disconnect()
     }
 
-  }, [sessionId])
+  }, [sessionId, myId])
 
   // 🚀 START CALL
   const startCall = () => {
@@ -98,8 +111,7 @@ export default function VideoCall() {
 
     peerRef.current.on("signal", (signalData: any) => {
       socketRef.current.emit("answer-call", {
-        signal: signalData,
-        
+        signal: signalData
       })
     })
 
