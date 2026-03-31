@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState } from "react"
 import Peer from "simple-peer"
 import { io } from "socket.io-client"
+import { useSearchParams } from "next/navigation"
 
 export default function VideoCall() {
+
+  const params = useSearchParams()
+  const sessionId = params.get("session") || "default123"
 
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [callReceived, setCallReceived] = useState(false)
@@ -17,34 +21,33 @@ export default function VideoCall() {
 
   useEffect(() => {
 
-    // ✅ BACKEND URL (तुम्हारा)
     socketRef.current = io("https://mentor-backend-i17a.onrender.com")
 
-    // ✅ CAMERA ACCESS SAFE
-    if (typeof window !== "undefined" && navigator.mediaDevices) {
-      navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      })
-      .then((currentStream) => {
-        setStream(currentStream)
+    // ✅ JOIN SAME SESSION
+    socketRef.current.emit("join-session", sessionId)
 
-        if (userVideo.current) {
-          userVideo.current.srcObject = currentStream
-        }
-      })
-      .catch((err) => {
-        console.log("Camera error", err)
-      })
-    }
+    navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    })
+    .then((currentStream) => {
+      setStream(currentStream)
 
-    // 📞 CALL RECEIVED
+      if (userVideo.current) {
+        userVideo.current.srcObject = currentStream
+      }
+    })
+    .catch((err) => {
+      console.log("Camera error", err)
+    })
+
+    // 📞 RECEIVE CALL
     socketRef.current.on("call-made", (data: any) => {
       setCallReceived(true)
       setCallerSignal(data.signal)
     })
 
-    // 📞 CALL ANSWERED
+    // 📞 CALL ACCEPTED
     socketRef.current.on("call-answered", (signal: any) => {
       if (peerRef.current) {
         peerRef.current.signal(signal)
@@ -52,10 +55,10 @@ export default function VideoCall() {
     })
 
     return () => {
-      socketRef.current?.disconnect()
+      socketRef.current.disconnect()
     }
 
-  }, [])
+  }, [sessionId])
 
   // 🚀 START CALL
   const startCall = () => {
@@ -70,7 +73,8 @@ export default function VideoCall() {
 
     peerRef.current.on("signal", (data: any) => {
       socketRef.current.emit("call-user", {
-        signal: data
+        signal: data,
+        sessionId
       })
     })
 
@@ -94,7 +98,8 @@ export default function VideoCall() {
 
     peerRef.current.on("signal", (data: any) => {
       socketRef.current.emit("answer-call", {
-        signal: data
+        signal: data,
+        sessionId
       })
     })
 
