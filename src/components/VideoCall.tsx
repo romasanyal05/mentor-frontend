@@ -96,10 +96,10 @@ export default function VideoCall() {
       stream: stream
     })
 
-    peerRef.current.on("signal", (data: any) => {
+    peerRef.current.on("signal", (signalData: any) => {
       socketRef.current.emit("answer-call", {
-        signal: data,
-        sessionId
+        signal: signalData,
+        
       })
     })
 
